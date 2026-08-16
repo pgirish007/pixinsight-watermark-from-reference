@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_SRC = ROOT / "WatermarkFromReference.js"
 UPDATES_DIR = ROOT / "updates"
 
-CATEGORY = "Watermark"          # must match the #feature-id category
+CATEGORY = "AstroByGirish"      # must match the #feature-id category
 SCRIPT_NAME = "WatermarkFromReference"
 TITLE = "Watermark From Reference"
 PLATFORM_VERSION = "1.9.0:2.99.99"

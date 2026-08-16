@@ -13,7 +13,7 @@
 // native Apple Silicon builds, which do not ship the legacy SpiderMonkey
 // engine).
 
-#feature-id    Watermark > WatermarkFromReference
+#feature-id    AstroByGirish > WatermarkFromReference
 
 #feature-info  Reads acquisition metadata from a reference image (file or \
    loaded view) and stamps it as a text watermark onto a new copy of a \
@@ -21,11 +21,10 @@
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
-const VERSION = "0.5";
+const VERSION = "0.6";
 const TITLE   = "Watermark From Reference";
-const AUTHOR_NAME  = "Girish Pandit";
-const AUTHOR_EMAIL = "info@girishpandit.photography";
-const AUTHOR_WEB   = "https://pandit.photography";
+const AUTHOR_NAME = "Girish Pandit";
+const AUTHOR_LINK = "https://www.tiktok.com/@astrowithgirish";
 
 function errorText( e )
 {
@@ -641,8 +640,7 @@ class WatermarkDialog extends Dialog
       {
          let text = TITLE + " v" + VERSION + "\n\n" +
             AUTHOR_NAME + "\n" +
-            AUTHOR_EMAIL + "\n" +
-            AUTHOR_WEB;
+            AUTHOR_LINK;
          (new MessageBox( text, "About " + TITLE, StdIcon.Information )).execute();
       };
 

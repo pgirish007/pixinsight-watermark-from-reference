@@ -17,7 +17,7 @@ Requires PixInsight 1.9.4 or later (V8 script runtime).
    ```
 3. **RESOURCES → Updates → Check for Updates**, then apply the update and
    restart PixInsight.
-4. The script appears under **SCRIPT → Watermark → Watermark From Reference**.
+4. The script appears under **SCRIPT → AstroByGirish → Watermark From Reference**.
 
 ## Installing manually (without a repository)
 

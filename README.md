@@ -57,10 +57,13 @@ install it under the Scripts menu permanently.
    service, so it needs an internet connection and sends the rounded
    coordinates to openstreetmap.org. Leave it unchecked to keep everything
    offline.
-5. Click **Preview Metadata**. The live preview shows a thumbnail of your
+5. Optionally type something into **Custom message** - it's added as its
+   own line after the metadata fields, exactly as typed (e.g. your name,
+   a website, or a copyright note).
+6. Click **Preview Metadata**. The live preview shows a thumbnail of your
    target image with the watermark rendered on top - drag the box to
    reposition it anywhere on the image.
-6. Click **Add Watermark (new image)**. A new image window is created with
+7. Click **Add Watermark (new image)**. A new image window is created with
    the watermark baked in; your original target image is left untouched.
 
 Click the **ℹ About** button at any time for the script's version and author

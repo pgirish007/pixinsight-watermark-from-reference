@@ -21,7 +21,7 @@
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
-const VERSION = "0.8";
+const VERSION = "0.9";
 const TITLE   = "Watermark From Reference";
 const AUTHOR_NAME = "Girish Pandit";
 const AUTHOR_LINK = "https://www.tiktok.com/@astrowithgirish";
@@ -360,7 +360,9 @@ function formatField( id, meta )
 // Builds display lines from whichever field ids the user selected, in
 // FIELD_DEFS order, grouping a few fields per line so the watermark
 // doesn't turn into one very long line when many fields are selected.
-function buildWatermarkLines( meta, selectedIds )
+// If customText is given, it's appended as its own final line, exactly
+// as typed - it isn't grouped in with the metadata fields.
+function buildWatermarkLines( meta, selectedIds, customText )
 {
    let parts = [];
    for ( let i = 0; i < FIELD_DEFS.length; ++i )
@@ -377,6 +379,10 @@ function buildWatermarkLines( meta, selectedIds )
    const perLine = 3;
    for ( let i = 0; i < parts.length; i += perLine )
       lines.push( parts.slice( i, i + perLine ).join( "  |  " ) );
+
+   if ( customText != null && customText.trim() != "" )
+      lines.push( customText.trim() );
+
    return lines;
 }
 
@@ -814,7 +820,16 @@ class WatermarkDialog extends Dialog
          let cb = new CheckBox( this );
          cb.text = def.label;
          cb.checked = def.default;
-         cb.onCheck = () => refreshPreview();
+         if ( def.id == "location" )
+            cb.onCheck = ( checked ) =>
+            {
+               // Resolving a place name is meaningless without Site Location.
+               if ( !checked )
+                  dlg.resolveLocationCheckBox.checked = false;
+               refreshPreview();
+            };
+         else
+            cb.onCheck = () => refreshPreview();
          this.fieldCheckBoxes[def.id] = cb;
          ( i % 2 == 0 ? fieldsCol1 : fieldsCol2 ).add( cb );
       }
@@ -831,8 +846,21 @@ class WatermarkDialog extends Dialog
       this.resolveLocationCheckBox.toolTip =
          "Looks up the site coordinates via the free OpenStreetMap Nominatim " +
          "service and shows \"City, State, Country\" instead of raw coordinates. " +
-         "Only used if Site Location is checked above. Click Preview Metadata " +
-         "again after toggling this.";
+         "Click Preview Metadata again after toggling this.";
+      this.resolveLocationCheckBox.onCheck = ( checked ) =>
+      {
+         // Resolving needs Site Location itself checked too.
+         if ( checked )
+            dlg.fieldCheckBoxes["location"].checked = true;
+         refreshPreview();
+      };
+
+      this.customTextLabel = new Label( this );
+      this.customTextLabel.text = "Custom message (optional, shown as the last line):";
+
+      this.customTextEdit = new Edit( this );
+      this.customTextEdit.toolTip = "Free text, e.g. your name or website - added as its own line after the metadata fields.";
+      this.customTextEdit.onTextUpdated = () => refreshPreview();
 
       // --- Preview --------------------------------------------------------
 
@@ -849,7 +877,7 @@ class WatermarkDialog extends Dialog
       {
          if ( !dlg.meta )
             return;
-         let lines = buildWatermarkLines( dlg.meta, selectedFieldIds() );
+         let lines = buildWatermarkLines( dlg.meta, selectedFieldIds(), dlg.customTextEdit.text );
          dlg.lines = lines;
          dlg.previewLabel.text = lines.length ? lines.join( "\n" ) : "(no fields selected)";
          dlg.previewControl.lines = lines;
@@ -982,6 +1010,9 @@ class WatermarkDialog extends Dialog
       this.sizer.add( this.fieldsSectionLabel );
       this.sizer.add( this.fieldsSizer );
       this.sizer.add( this.resolveLocationCheckBox );
+      this.sizer.addSpacing( 6 );
+      this.sizer.add( this.customTextLabel );
+      this.sizer.add( this.customTextEdit );
       this.sizer.addSpacing( 6 );
       this.sizer.add( this.previewButton );
       this.sizer.add( this.previewLabel );

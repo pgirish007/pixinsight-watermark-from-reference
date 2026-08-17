@@ -3,32 +3,46 @@
 ## Project layout
 
 ```
-WatermarkFromReference.js   the script - single source of truth, edit this
-tools/build.py              packages the script into update-repository format
-updates/updates.xri         generated repository index (committed)
-updates/*.zip                generated, one zip per release (committed, kept as history)
-README.md                   user-facing install/usage guide
+WatermarkFromReference.js     the script - single source of truth, edit this
+WatermarkFromReference.xsgn   optional - script signature from CodeSign (committed if present)
+tools/build.py                packages the script into update-repository format
+updates/updates.xri           generated repository index (committed)
+updates/*.zip                  generated, one zip per release (committed, kept as history)
+README.md                     user-facing install/usage guide
 ```
 
 `tools/build.py` reads `WatermarkFromReference.js` directly from the repo
 root - there's no separate `src/` working copy to keep in sync. It zips the
 script into PixInsight's install-relative path
 (`src/scripts/AstroByGirish/WatermarkFromReference.js`) only inside the
-generated zip under `updates/`.
+generated zip under `updates/`. If `WatermarkFromReference.xsgn` exists at
+the repo root (see "Signing the repository" below), it's automatically
+bundled into the zip alongside the script, at
+`src/scripts/AstroByGirish/WatermarkFromReference.xsgn`. Unlike the
+`.xssk` keys file, `.xsgn` is a public signature - safe and expected to be
+committed.
 
 ## Releasing a new version
 
 1. Edit `WatermarkFromReference.js`, bump the `VERSION` constant.
-2. Run:
+2. *(If you're signing releases - see below)* re-run `CodeSign` on
+   `WatermarkFromReference.js` now, since it changed, so
+   `WatermarkFromReference.xsgn` matches the new content.
+3. Run:
    ```
    python3 tools/build.py
    ```
-   This zips the script and regenerates `updates/updates.xri`, keeping
-   every previous release's `<package>` entry in the index (so PixInsight's
-   update history/rollback keeps working).
-3. Commit and push `WatermarkFromReference.js`, `updates/updates.xri`, and
-   the new `updates/WatermarkFromReference-<date>.zip`.
-4. Users pick up the new version automatically next time they check for
+   This zips the script (plus `WatermarkFromReference.xsgn` if present)
+   and regenerates `updates/updates.xri`, keeping every previous release's
+   `<package>` entry in the index (so PixInsight's update history/rollback
+   keeps working).
+4. *(If you're signing releases)* sign `updates/updates.xri` with
+   `CodeSign` now - it must be signed **after** step 3 regenerates it, or
+   the signature won't match.
+5. Commit and push `WatermarkFromReference.js`, `WatermarkFromReference.xsgn`
+   (if present), `updates/updates.xri`, and the new
+   `updates/WatermarkFromReference-<date>.zip`.
+6. Users pick up the new version automatically next time they check for
    updates (**RESOURCES → Updates → Check for Updates**).
 
 ## Repository format notes

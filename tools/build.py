@@ -16,6 +16,7 @@ from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_SRC = ROOT / "WatermarkFromReference.js"
+SCRIPT_SIGNATURE = ROOT / "WatermarkFromReference.xsgn"
 UPDATES_DIR = ROOT / "updates"
 
 CATEGORY = "AstroByGirish"      # must match the #feature-id category
@@ -44,6 +45,9 @@ def build_zip(release_date):
     arcname = f"src/scripts/{CATEGORY}/{SCRIPT_NAME}.js"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(SCRIPT_SRC, arcname)
+        if SCRIPT_SIGNATURE.exists():
+            sig_arcname = f"src/scripts/{CATEGORY}/{SCRIPT_NAME}.xsgn"
+            zf.write(SCRIPT_SIGNATURE, sig_arcname)
     return zip_path
 
 
@@ -93,7 +97,10 @@ def main():
     release_date = date.today().strftime("%Y%m%d")
     zip_path = build_zip(release_date)
     write_updates_xri()
-    print(f"Built {zip_path.name} (v{version}) and regenerated updates.xri")
+    sig_note = "with script signature" if SCRIPT_SIGNATURE.exists() else "WITHOUT a script signature"
+    print(f"Built {zip_path.name} (v{version}, {sig_note}) and regenerated updates.xri")
+    if SCRIPT_SIGNATURE.exists():
+        print("Remember: sign updates/updates.xri with CodeSign AFTER this build, or its signature goes stale.")
 
 
 if __name__ == "__main__":

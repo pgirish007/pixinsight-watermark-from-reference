@@ -4,7 +4,7 @@
       <p>Watermark From Reference - PixInsight script update repository.</p>
    </description>
    <platform os="all" arch="noarch" version="1.9.0:2.99.99">
-      <package fileName="WatermarkFromReference-20260816.zip" sha1="4ae1f113d20386f656f3c2219b97ac5d83c600ce" type="script" releaseDate="20260816">
+      <package fileName="WatermarkFromReference-20260816.zip" sha1="81107313195cf9b20f63b228f0c06910e59cf695" type="script" releaseDate="20260816">
          <title>Watermark From Reference</title>
          <description>
             <p>Stamps acquisition metadata (telescope, camera, filter, exposure, date and more) from a reference FITS/XISF file or an open view as a text watermark onto a new copy of a target image, positioned by dragging in a live preview.</p>
@@ -12,3 +12,4 @@
       </package>
    </platform>
 </xri>
+<Signature developerId="AstroByGirish" timestamp="2026-08-17T01:37:06.145Z" encoding="Base64">aQUaM7ZuHJW+kDeoaRGbdAZPkBUxg4mEKZqw12mzSsGw0QUjSnSnqME/AFqxDTqYh2hlyMbCg8M04x1mukNFCg==</Signature>

@@ -42,6 +42,14 @@ generated zip under `updates/`.
   `WatermarkFromReference.js`, not by the zip's internal folder name -
   keep `CATEGORY` in `build.py` matching it for consistency, but changing
   one without the other won't break anything on its own.
+- The full `#feature-id` syntax is `#feature-id <script-id> : <menu-item>`
+  - the `<script-id>` part (currently `WatermarkFromReference`) is a
+  stable, unique identifier with **no spaces**, separate from the
+  menu path after the colon. **Don't drop the `<script-id> :` prefix** -
+  without it the file has no identifier CodeSign can attach a signature
+  to, which is exactly the `Security.generateScriptSignatureFile(): No
+  script identifier has been specified` error this project hit before
+  the directive was corrected to include it.
 - Code signing is optional. Unsigned packages show
   `Signature: <* unavailable *>` in PixInsight's update dialog but still
   install and run fine. See "Signing the repository" below to remove that
@@ -51,35 +59,48 @@ generated zip under `updates/`.
 
 This removes the `Signature: <* unavailable *>` line, but it's a manual,
 multi-step process done from inside PixInsight - it can't be scripted from
-this repo, and the last step is an external application to PixInsight
-that isn't in our control. Do this only if you want it; the script works
-fine unsigned.
+this repo, and the last step (CPD approval) is an external application to
+PixInsight that isn't in our control. Do this only if you want it; the
+script works fine unsigned. All of this is documented in PixInsight's own
+[Script Code Signing reference](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html) -
+these are the parts relevant to this repo. The three tools below
+(`SigningKeys`, `CodeSign`, `SubmitCPD`) are standard PixInsight scripts -
+if their exact submenu isn't obvious in your version, use
+**Process Explorer** (or the Script menu's search) and type the name.
 
-1. **Generate a signing key pair.** In PixInsight, run the standard
-   `SigningKeys` script (**SCRIPT → Development → SigningKeys**, exact
-   menu path may vary slightly by version). This creates a private keys
-   file (`.xssk`) protected by a password you choose.
+1. **Generate a signing key pair.** Run the standard `SigningKeys` script,
+   *Generate Signing Keys* option. This creates a private keys file
+   (`.xssk` extension) protected by a password you choose - the same kind
+   of file works for a local identity or a future CPD submission.
    - **Never commit the `.xssk` file to git or share it.** Whoever holds
-     it can sign packages as you. Keep it outside this repo (e.g. in your
-     PixInsight config folder or a password manager), and make sure
-     `.gitignore` would catch it if it ever ended up here.
-2. **Sign `updates/updates.xri` after every build.** Run PixInsight's
-   `CodeSign` script (**SCRIPT → Development → CodeSign**) and point it at
-   `updates/updates.xri` and your `.xssk` file. This must happen *after*
-   `tools/build.py` regenerates `updates.xri` for a release - signing
-   an older copy invalidates the signature.
-   - Optionally sign `WatermarkFromReference.js` itself the same way; this
-     produces a companion `.xsgn` file that would need to ship alongside
-     the script inside the zip.
-3. **What this buys you right away:** a *locally trusted* signature -
-   PixInsight on your own machine will show it as signed. Other users
-   installing the repository will still see it as signed by an
-   unverified/local identity, not a globally trusted one.
+     it (and its password) can sign packages as you. Keep it outside this
+     repo. `.gitignore` in this repo already excludes `*.xssk` as a
+     safety net.
+2. **(Optional, for testing) Register it as your local signing identity.**
+   **Script → Local Signing Identity...** → point it at your `.xssk` file
+   and password, check *Make the local signing identity persistent*. This
+   lets `CodeSign` produce signatures immediately, but they only verify as
+   trusted on machines where **your own** PixInsight license is activated -
+   not for other users.
+3. **Sign the script and the repository index with `CodeSign`.** Run the
+   `CodeSign` script and give it:
+   - the file(s) to sign: `WatermarkFromReference.js` **and**
+     `updates/updates.xri` (only executable `.js` files with a valid
+     `#feature-id`/`#script-id`, and `.xri` files, can be signed -
+     `.jsh`/include files should not be)
+   - your `.xssk` keys file and its password
+   - *Entitlements*: leave empty - this script doesn't need any
+   - Sign `updates.xri` **after** `tools/build.py` regenerates it for a
+     release; signing an older copy invalidates the signature. Signing
+     `WatermarkFromReference.js` produces a companion `.xsgn` file that
+     must ship alongside the script inside the zip's
+     `src/scripts/AstroByGirish/` folder.
 4. **To get a trusted badge for every user (optional, external, slow):**
    apply to become a **Certified PixInsight Developer (CPD)** by running
-   the standard `SubmitCPD` script and submitting your public signing key
-   and developer identifier to the PixInsight team for review. This is a
-   manual application process outside this repo and PixInsight's control,
-   not something that can be automated here - see
-   [pixinsight.com's Script Code Signing docs](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html)
-   for current details.
+   the standard `SubmitCPD` script. It sends your public key (read from
+   the `.xssk` file), a chosen developer identifier, and a contact email
+   to PixInsight for review. Once approved, your public key ships in
+   PixInsight's own CPD database update, and from then on your signatures
+   verify as trusted on every user's installation, not just yours. This
+   step is entirely outside this repo's or my control - it's a manual
+   review by the PixInsight team.

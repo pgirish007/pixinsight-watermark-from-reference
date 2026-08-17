@@ -13,7 +13,7 @@
 // native Apple Silicon builds, which do not ship the legacy SpiderMonkey
 // engine).
 
-#feature-id    AstroByGirish > WatermarkFromReference
+#feature-id    WatermarkFromReference : AstroByGirish > Watermark From Reference
 
 #feature-info  Reads acquisition metadata from a reference image (file or \
    loaded view) and stamps it as a text watermark onto a new copy of a \
@@ -21,7 +21,7 @@
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
-const VERSION = "0.7";
+const VERSION = "0.8";
 const TITLE   = "Watermark From Reference";
 const AUTHOR_NAME = "Girish Pandit";
 const AUTHOR_LINK = "https://www.tiktok.com/@astrowithgirish";

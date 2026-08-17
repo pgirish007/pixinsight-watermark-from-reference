@@ -50,7 +50,13 @@ install it under the Scripts menu permanently.
    the camera's own FITS header.
 4. Under **Watermark fields**, check whichever fields you want included
    (see the full list below). Telescope, Camera, Filter, Exposure and
-   Date/Time are checked by default.
+   Date/Time are checked by default. If you check **Site Location**, you
+   can also check **Resolve Site Location to a city/state name** to show
+   "City, State, Country" instead of raw coordinates - this looks the
+   coordinates up via the free, keyless [OpenStreetMap Nominatim](https://nominatim.org/)
+   service, so it needs an internet connection and sends the rounded
+   coordinates to openstreetmap.org. Leave it unchecked to keep everything
+   offline.
 5. Click **Preview Metadata**. The live preview shows a thumbnail of your
    target image with the watermark rendered on top - drag the box to
    reposition it anywhere on the image.
@@ -75,7 +81,7 @@ info.
 | Coordinates (RA/Dec) | Target right ascension / declination |
 | Gain | Camera gain setting |
 | Sensor Temp | Sensor temperature at capture |
-| Site Location | Observation site latitude/longitude |
+| Site Location | Observation site latitude/longitude, or city/state/country if "Resolve Site Location to a city/state name" is checked |
 
 A field only appears in the watermark if the selected reference actually
 contains that data - missing values are skipped rather than shown as blank.

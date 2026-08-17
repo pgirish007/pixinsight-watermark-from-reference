@@ -21,7 +21,7 @@
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
-const VERSION = "0.6";
+const VERSION = "0.7";
 const TITLE   = "Watermark From Reference";
 const AUTHOR_NAME = "Girish Pandit";
 const AUTHOR_LINK = "https://www.tiktok.com/@astrowithgirish";
@@ -249,7 +249,73 @@ function formatLocation( meta )
 {
    if ( meta.lat == null || meta.long == null )
       return null;
+   if ( meta.locationName )
+   {
+      let n = meta.locationName;
+      let parts = [ n.city, n.state, n.country ].filter( p => !!p );
+      if ( parts.length )
+         return parts.join( ", " );
+   }
    return meta.lat.toFixed( 3 ) + "°, " + meta.long.toFixed( 3 ) + "°";
+}
+
+// In-session cache so re-previewing doesn't re-query the same coordinates.
+// Keyed to 2 decimal places (~1km) - plenty of precision for a city/state
+// lookup and it keeps repeated clicks free.
+let locationNameCache = {};
+
+// Reverse-geocodes lat/long to a city/state/country via OpenStreetMap's
+// free, global, keyless Nominatim API. Best-effort only: any failure
+// (offline, timeout, unexpected response) falls back to null so callers
+// just keep showing raw coordinates instead of erroring out.
+function reverseGeocodeLookup( lat, lon )
+{
+   let key = lat.toFixed( 2 ) + "," + lon.toFixed( 2 );
+   if ( key in locationNameCache )
+      return locationNameCache[key];
+
+   let result = null;
+   try
+   {
+      let url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=" +
+                 encodeURIComponent( lat ) + "&lon=" + encodeURIComponent( lon ) +
+                 "&zoom=10&addressdetails=1";
+      let xfer = new NetworkTransfer();
+      xfer.setURL( url );
+      // Nominatim's usage policy requires a descriptive User-Agent identifying
+      // the application for any non-browser client.
+      xfer.setCustomHTTPHeaders( [
+         "User-Agent: WatermarkFromReference-PixInsightScript/" + VERSION +
+         " (+https://github.com/pgirish007/pixinsight-watermark-from-reference)"
+      ] );
+      xfer.setConnectionTimeout( 6 );
+
+      let received = new ByteArray;
+      xfer.onDownloadDataAvailable = ( data ) =>
+      {
+         received.add( data );
+         return true;
+      };
+
+      if ( xfer.download() && xfer.ok )
+      {
+         let json = JSON.parse( received.utf8ToString() );
+         let addr = json.address || {};
+         let city = addr.city || addr.town || addr.village || addr.municipality ||
+                    addr.hamlet || addr.county || null;
+         let state = addr.state || addr.region || addr.state_district || null;
+         let country = addr.country || null;
+         if ( city || state || country )
+            result = { city: city, state: state, country: country };
+      }
+   }
+   catch ( e )
+   {
+      result = null;
+   }
+
+   locationNameCache[key] = result;
+   return result;
 }
 
 // Field registry driving the "Watermark fields" checkboxes in the dialog.
@@ -759,6 +825,15 @@ class WatermarkDialog extends Dialog
       this.fieldsSizer.add( fieldsCol2 );
       this.fieldsSizer.addStretch();
 
+      this.resolveLocationCheckBox = new CheckBox( this );
+      this.resolveLocationCheckBox.text = "Resolve Site Location to a city/state name (needs internet)";
+      this.resolveLocationCheckBox.checked = false;
+      this.resolveLocationCheckBox.toolTip =
+         "Looks up the site coordinates via the free OpenStreetMap Nominatim " +
+         "service and shows \"City, State, Country\" instead of raw coordinates. " +
+         "Only used if Site Location is checked above. Click Preview Metadata " +
+         "again after toggling this.";
+
       // --- Preview --------------------------------------------------------
 
       let selectedFieldIds = () =>
@@ -806,6 +881,13 @@ class WatermarkDialog extends Dialog
                   return;
                }
                meta = extractMetadataFromWindow( view.window );
+            }
+            if ( dlg.resolveLocationCheckBox.checked && meta.lat != null && meta.long != null )
+            {
+               dlg.previewButton.enabled = false;
+               processEvents();
+               meta.locationName = reverseGeocodeLookup( meta.lat, meta.long );
+               dlg.previewButton.enabled = true;
             }
             dlg.meta = meta;
             refreshPreview();
@@ -899,6 +981,7 @@ class WatermarkDialog extends Dialog
       this.sizer.addSpacing( 6 );
       this.sizer.add( this.fieldsSectionLabel );
       this.sizer.add( this.fieldsSizer );
+      this.sizer.add( this.resolveLocationCheckBox );
       this.sizer.addSpacing( 6 );
       this.sizer.add( this.previewButton );
       this.sizer.add( this.previewLabel );

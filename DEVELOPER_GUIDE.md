@@ -71,11 +71,28 @@ committed.
 
 ## Signing the repository
 
-This removes the `Signature: <* unavailable *>` line, but it's a manual,
-multi-step process done from inside PixInsight - it can't be scripted from
-this repo, and the last step (CPD approval) is an external application to
-PixInsight that isn't in our control. Do this only if you want it; the
-script works fine unsigned. All of this is documented in PixInsight's own
+**Do not sign `updates/updates.xri` (or ship a locally-signed `.xsgn`)
+until a real CPD identity exists.** This was tried and it broke the live
+repository for everyone: PixInsight checks a repository's `<Signature>`
+against its CPD database only, so a *local* signing identity (not yet a
+CPD) is simply not in there, and PixInsight hard-fails with `Unknown code
+signing identity 'AstroByGirish'` instead of falling back to the
+"unsigned" warning - unlike an actually-unsigned repository, which just
+shows `Signature: <* unavailable *>` and still works fine. An unsigned
+repository is strictly safer than one signed with an identity PixInsight
+can't verify. Local signing identities are only meant for verifying
+*your own* scripts on *your own* licensed machine (see step 2 below) -
+not for anything shipped to other users, including the repository index
+and the script's `.xsgn`.
+
+So: leave the repository unsigned (current state) until step 4 below
+(CPD approval) is complete, then resume signing `updates.xri` and
+`WatermarkFromReference.xsgn` on every release.
+
+This is a manual, multi-step process done from inside PixInsight - it
+can't be scripted from this repo, and the last step (CPD approval) is an
+external application to PixInsight that isn't in our control. All of this
+is documented in PixInsight's own
 [Script Code Signing reference](https://pixinsight.com/doc/docs/ScriptCodeSigning/ScriptCodeSigning.html) -
 these are the parts relevant to this repo. The three tools below
 (`SigningKeys`, `CodeSign`, `SubmitCPD`) are standard PixInsight scripts -
@@ -90,14 +107,17 @@ if their exact submenu isn't obvious in your version, use
      it (and its password) can sign packages as you. Keep it outside this
      repo. `.gitignore` in this repo already excludes `*.xssk` as a
      safety net.
-2. **(Optional, for testing) Register it as your local signing identity.**
-   **Script → Local Signing Identity...** → point it at your `.xssk` file
-   and password, check *Make the local signing identity persistent*. This
-   lets `CodeSign` produce signatures immediately, but they only verify as
-   trusted on machines where **your own** PixInsight license is activated -
-   not for other users.
-3. **Sign the script and the repository index with `CodeSign`.** Run the
-   `CodeSign` script and give it:
+2. **(Optional, for testing only - don't ship this) Register it as your
+   local signing identity.** **Script → Local Signing Identity...** →
+   point it at your `.xssk` file and password, check *Make the local
+   signing identity persistent*. This lets `CodeSign` produce signatures
+   immediately so you can rehearse the workflow, but as explained above,
+   these signatures aren't recognized off your own machine - fine to
+   practice with on a scratch copy, but don't commit/push the result as
+   the real release's `updates.xri` or `.xsgn` until step 4 is done.
+3. **Get CPD-approved (step 4 below), then sign for real with
+   `CodeSign`.** Once your public key is in PixInsight's CPD database,
+   run `CodeSign` and give it:
    - the file(s) to sign: `WatermarkFromReference.js` **and**
      `updates/updates.xri` (only executable `.js` files with a valid
      `#feature-id`/`#script-id`, and `.xri` files, can be signed -
@@ -108,8 +128,10 @@ if their exact submenu isn't obvious in your version, use
      release; signing an older copy invalidates the signature. Signing
      `WatermarkFromReference.js` produces a companion `.xsgn` file that
      must ship alongside the script inside the zip's
-     `src/scripts/AstroByGirish/` folder.
-4. **To get a trusted badge for every user (optional, external, slow):**
+     `src/scripts/AstroByGirish/` folder - `tools/build.py` bundles it in
+     automatically if `WatermarkFromReference.xsgn` exists at the repo
+     root when you run it.
+4. **Apply for a CPD identity (do this first, before step 3):**
    apply to become a **Certified PixInsight Developer (CPD)** by running
    the standard `SubmitCPD` script. It sends your public key (read from
    the `.xssk` file), a chosen developer identifier, and a contact email

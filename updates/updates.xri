@@ -10,5 +10,11 @@
             <p>Stamps acquisition metadata (telescope, camera, filter, exposure, date and more) from a reference FITS/XISF file or an open view as a text watermark onto a new copy of a target image, positioned by dragging in a live preview.</p>
          </description>
       </package>
+      <package fileName="WatermarkFromReference-20260819.zip" sha1="ef3ace0095728281ff70dc58873fe03b33cbc149" type="script" releaseDate="20260819">
+         <title>Watermark From Reference</title>
+         <description>
+            <p>Stamps acquisition metadata (telescope, camera, filter, exposure, date and more) from a reference FITS/XISF file or an open view as a text watermark onto a new copy of a target image, positioned by dragging in a live preview.</p>
+         </description>
+      </package>
    </platform>
 </xri>

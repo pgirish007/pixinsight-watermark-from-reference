@@ -19,9 +19,19 @@
    loaded view) and stamps it as a text watermark onto a new copy of a \
    target view, positioned by dragging in a live preview.
 
+// NOTE: the legacy pjsr/ColorComboBox.jsh and pjsr/SimpleColorDialog.jsh
+// both pull in pjsr/Color.jsh, which redeclares a global "Color" function -
+// that collides with the V8 runtime's own native Color global ("Identifier
+// 'Color' has already been declared") since this script requires #engine v8.
+// pjsr/controls/SimpleColorDialog.js is the V8-safe ES6 rewrite (no Color.jsh
+// dependency) and is used for the custom text-color picker below; there is
+// no V8-safe ColorComboBox equivalent, so the text-color preset list is a
+// small hand-rolled ComboBox instead (see TEXT_COLOR_PRESETS).
+#include <pjsr/controls/SimpleColorDialog.js>
+
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
-const VERSION = "0.9";
+const VERSION = "1.0";
 const TITLE   = "Watermark From Reference";
 const AUTHOR_NAME = "Girish Pandit";
 const AUTHOR_LINK = "https://www.tiktok.com/@astrowithgirish";
@@ -394,30 +404,94 @@ function buildWatermarkLines( meta, selectedIds, customText )
 // top-left of the image, 1,1 = bottom-right, which is the default).
 // ---------------------------------------------------------------------
 
-function computeLayout( w, h, lines, posFracX, posFracY )
+// Greedily word-wraps one logical line to fit within maxWidth at the given
+// font, breaking at spaces. A single word wider than maxWidth on its own
+// (e.g. a long URL) is left on its own line rather than broken mid-word -
+// the caller's font-shrink pass handles that rare case instead.
+function wrapTextToWidth( font, text, maxWidth )
 {
-   let fontSize = Math.max( 6, Math.round( w * 0.014 ) );
-   let margin   = Math.round( w * 0.015 );
-   let lineGap  = Math.round( fontSize * 0.4 );
-   let padding  = Math.round( fontSize * 0.6 );
+   if ( maxWidth <= 0 || font.width( text ) <= maxWidth )
+      return [ text ];
 
-   let font = new Font( FontFamily.SansSerif, fontSize );
-   font.bold = true;
-
-   let lineHeight = font.height;
-   let ascent = font.ascent;
-   let maxLineWidth = 0;
-   for ( let i = 0; i < lines.length; ++i )
+   let words = text.split( " " );
+   let out = [];
+   let cur = "";
+   for ( let i = 0; i < words.length; ++i )
    {
-      let lw = font.width( lines[i] );
-      if ( lw > maxLineWidth )
-         maxLineWidth = lw;
+      let candidate = cur ? cur + " " + words[i] : words[i];
+      if ( cur == "" || font.width( candidate ) <= maxWidth )
+         cur = candidate;
+      else
+      {
+         out.push( cur );
+         cur = words[i];
+      }
    }
-   let blockHeight = lineHeight * lines.length + lineGap * ( lines.length - 1 );
+   if ( cur != "" )
+      out.push( cur );
+   return out;
+}
 
-   let boxW = maxLineWidth + padding * 2;
-   let boxH = blockHeight + padding * 2;
+function computeLayout( w, h, lines, posFracX, posFracY, fontScale )
+{
+   fontScale = fontScale || 1;
 
+   let margin = Math.round( w * 0.015 );
+   let maxBoxW = Math.max( 10, w - margin * 2 );
+   let maxBoxH = Math.max( 10, h - margin * 2 );
+
+   function build( fs )
+   {
+      let fontSize = Math.max( 6, Math.round( w * 0.014 * fs ) );
+      let lineGap  = Math.round( fontSize * 0.4 );
+      let padding  = Math.round( fontSize * 0.6 );
+
+      let font = new Font( FontFamily.SansSerif, fontSize );
+      font.bold = true;
+
+      let lineHeight = font.height;
+      let ascent = font.ascent;
+
+      // Word-wrap each logical line (a grouped metadata line, or the
+      // custom message) independently, so a line too wide for the image
+      // breaks onto multiple lines instead of overflowing past the edge.
+      let wrapWidth = maxBoxW - Math.round( fontSize * 0.6 ) * 2;
+      let wrapped = [];
+      for ( let i = 0; i < lines.length; ++i )
+         wrapped = wrapped.concat( wrapTextToWidth( font, lines[i], wrapWidth ) );
+
+      let maxLineWidth = 0;
+      for ( let i = 0; i < wrapped.length; ++i )
+      {
+         let lw = font.width( wrapped[i] );
+         if ( lw > maxLineWidth )
+            maxLineWidth = lw;
+      }
+      let blockHeight = lineHeight * wrapped.length + lineGap * ( wrapped.length - 1 );
+
+      return {
+         font: font, lineHeight: lineHeight, ascent: ascent, padding: padding, lineGap: lineGap,
+         wrapped: wrapped, maxLineWidth: maxLineWidth,
+         boxW: maxLineWidth + padding * 2,
+         boxH: blockHeight + padding * 2
+      };
+   }
+
+   // Auto-shrink the requested font size if the resulting box still
+   // wouldn't fit inside the image after wrapping - a very long unbroken
+   // word, many wrapped lines at a large text-size setting, or a small
+   // image could otherwise make the box extend past the image edge, where
+   // it gets clipped by the render target.
+   let fs = fontScale;
+   let r = build( fs );
+   for ( let iter = 0; iter < 6 && ( r.boxW > maxBoxW || r.boxH > maxBoxH ); ++iter )
+   {
+      let shrink = Math.min( maxBoxW / r.boxW, maxBoxH / r.boxH );
+      fs *= Math.max( 0.5, shrink ); // floor avoids overshoot/oscillation
+      r = build( fs );
+   }
+
+   let boxW = r.boxW, boxH = r.boxH;
    let minX = margin, maxX = Math.max( margin, w - margin - boxW );
    let minY = margin, maxY = Math.max( margin, h - margin - boxH );
 
@@ -425,10 +499,24 @@ function computeLayout( w, h, lines, posFracX, posFracY )
    let boxY = Math.round( minY + posFracY * ( maxY - minY ) );
 
    return {
-      font: font, lineHeight: lineHeight, ascent: ascent, padding: padding, lineGap: lineGap,
+      font: r.font, lineHeight: r.lineHeight, ascent: r.ascent, padding: r.padding, lineGap: r.lineGap,
       boxW: boxW, boxH: boxH, boxX: boxX, boxY: boxY,
-      minX: minX, maxX: maxX, minY: minY, maxY: maxY
+      minX: minX, maxX: maxX, minY: minY, maxY: maxY,
+      maxLineWidth: r.maxLineWidth, wrapped: r.wrapped
    };
+}
+
+// Horizontal offset (px) for one line within the box's text area, given the
+// selected justification - "left" (default), "center" or "right".
+function lineAlignOffset( layout, line, lineAlign )
+{
+   let lw = layout.font.width( line );
+   switch ( lineAlign )
+   {
+      case "center": return Math.round( ( layout.maxLineWidth - lw ) / 2 );
+      case "right":  return layout.maxLineWidth - lw;
+      default:       return 0;
+   }
 }
 
 // ---------------------------------------------------------------------
@@ -438,24 +526,31 @@ function computeLayout( w, h, lines, posFracX, posFracY )
 // works on PixInsight 1.9.4 (V8 runtime). If a future run throws here,
 // the error dialog now surfaces the real message - report it back.
 
-function drawWatermark( targetWindow, lines, posFracX, posFracY )
+function drawWatermark( targetWindow, lines, posFracX, posFracY, style )
 {
+   style = style || {};
+   let fontScale = style.fontScale != null ? style.fontScale : 1;
+   let textColor = style.textColor != null ? style.textColor : 0xffffffff;
+   let bgOpacity = style.bgOpacity != null ? style.bgOpacity : 55; // 0..100
+   let lineAlign = style.lineAlign || "left";
+
    let image = targetWindow.mainView.image;
    let w = image.width;
    let h = image.height;
 
-   let layout = computeLayout( w, h, lines, posFracX, posFracY );
+   let layout = computeLayout( w, h, lines, posFracX, posFracY, fontScale );
 
-   const boxOpacity  = 0.55;
    const boxGray     = 0x40;
-   const boxMaskGray = Math.round( 255 * boxOpacity );
+   const boxMaskGray = Math.round( 255 * ( bgOpacity / 100 ) );
 
    // Renders one flat layer (opaque background + box + text) using solid
    // colors. Called twice below: once with the actual visual colors (the
    // "paint" layer) and once with the box/text drawn in shades of white
    // (the "mask" layer, used as a plain PixelMath opacity mask). This
    // avoids depending on the Bitmap's own alpha channel, which PixelMath
-   // could not index reliably on this build.
+   // could not index reliably on this build. The text itself is always
+   // painted at full mask opacity (0xffffffff below) regardless of
+   // bgOpacity - only the background box fades, the text stays crisp.
    function renderLayer( boxColorARGB, textColorARGB )
    {
       let bmp = new Bitmap( w, h );
@@ -470,9 +565,10 @@ function drawWatermark( targetWindow, lines, posFracX, posFracY )
 
       g.pen = new Pen( textColorARGB );
       let y = layout.boxY + layout.padding;
-      for ( let i = 0; i < lines.length; ++i )
+      for ( let i = 0; i < layout.wrapped.length; ++i )
       {
-         g.drawText( layout.boxX + layout.padding, y + layout.ascent, lines[i] );
+         let dx = lineAlignOffset( layout, layout.wrapped[i], lineAlign );
+         g.drawText( layout.boxX + layout.padding + dx, y + layout.ascent, layout.wrapped[i] );
          y += layout.lineHeight + layout.lineGap;
       }
 
@@ -485,7 +581,7 @@ function drawWatermark( targetWindow, lines, posFracX, posFracY )
       return 0xff000000 | ( level << 16 ) | ( level << 8 ) | level;
    }
 
-   let colorImage = renderLayer( gray( boxGray ), 0xffffffff );
+   let colorImage = renderLayer( gray( boxGray ), textColor );
    let maskImage  = renderLayer( gray( boxMaskGray ), 0xffffffff );
 
    let colorWindow = new ImageWindow( w, h, 3, 32, true, true, "watermark_color" );
@@ -559,6 +655,14 @@ class WatermarkPreview extends Control
       this.posFracY = 1;
       this.backgroundBitmap = null; // real image thumbnail, when a target is selected
 
+      // Watermark style - mirrors the defaults drawWatermark() falls back
+      // to, so the preview matches the final render before the user
+      // touches any style control.
+      this.fontScale = 1;
+      this.textColor = 0xffffffff;
+      this.bgOpacity = 55; // 0..100
+      this.lineAlign = "left";
+
       this._boxRect = null;   // last drawn box rect, in control coordinates
       this._frame = null;     // last drawn placeholder-frame rect
       this._dragging = false;
@@ -630,20 +734,23 @@ class WatermarkPreview extends Control
 
          if ( this.lines.length > 0 && frame.w > 4 && frame.h > 4 )
          {
-            let layout = computeLayout( frame.w, frame.h, this.lines, this.posFracX, this.posFracY );
+            let layout = computeLayout( frame.w, frame.h, this.lines, this.posFracX, this.posFracY, this.fontScale );
             let bx = frame.x + layout.boxX;
             let by = frame.y + layout.boxY;
 
-            g.fillRect( bx, by, bx + layout.boxW, by + layout.boxH, new Brush( 0xa0404040 ) );
+            let boxAlpha = Math.round( 255 * ( this.bgOpacity / 100 ) );
+            let boxARGB = ( ( boxAlpha << 24 ) | 0x404040 ) >>> 0;
+            g.fillRect( bx, by, bx + layout.boxW, by + layout.boxH, new Brush( boxARGB ) );
             g.pen = new Pen( 0xff808080 );
             g.drawRect( bx, by, bx + layout.boxW, by + layout.boxH );
 
-            g.pen = new Pen( 0xffffffff );
+            g.pen = new Pen( this.textColor );
             g.font = layout.font;
             let y = by + layout.padding;
-            for ( let i = 0; i < this.lines.length; ++i )
+            for ( let i = 0; i < layout.wrapped.length; ++i )
             {
-               g.drawText( bx + layout.padding, y + layout.ascent, this.lines[i] );
+               let dx = lineAlignOffset( layout, layout.wrapped[i], this.lineAlign );
+               g.drawText( bx + layout.padding + dx, y + layout.ascent, layout.wrapped[i] );
                y += layout.lineHeight + layout.lineGap;
             }
 
@@ -671,7 +778,7 @@ class WatermarkPreview extends Control
          if ( !this._dragging || !this._frame || this.lines.length == 0 )
             return;
 
-         let layout = computeLayout( this._frame.w, this._frame.h, this.lines, this.posFracX, this.posFracY );
+         let layout = computeLayout( this._frame.w, this._frame.h, this.lines, this.posFracX, this.posFracY, this.fontScale );
          let localX = ( x - this._dragDX ) - this._frame.x;
          let localY = ( y - this._dragDY ) - this._frame.y;
 
@@ -862,6 +969,180 @@ class WatermarkDialog extends Dialog
       this.customTextEdit.toolTip = "Free text, e.g. your name or website - added as its own line after the metadata fields.";
       this.customTextEdit.onTextUpdated = () => refreshPreview();
 
+      // --- Watermark style --------------------------------------------------
+
+      this.styleSectionLabel = new Label( this );
+      this.styleSectionLabel.text = "Watermark style:";
+
+      const FONT_SCALES = [ 0.75, 1, 1.35, 1.75 ];
+      this.fontSizeLabel = new Label( this );
+      this.fontSizeLabel.text = "Text size:";
+      this.fontSizeCombo = new ComboBox( this );
+      this.fontSizeCombo.addItem( "Small" );
+      this.fontSizeCombo.addItem( "Medium" );
+      this.fontSizeCombo.addItem( "Large" );
+      this.fontSizeCombo.addItem( "Extra Large" );
+      this.fontSizeCombo.currentItem = 1; // Medium, matches the previous fixed size
+      this.fontSizeCombo.onItemSelected = ( index ) =>
+      {
+         dlg.previewControl.fontScale = FONT_SCALES[index];
+         refreshPreview();
+      };
+
+      // Small hand-rolled preset list (see the note above the #include block
+      // for why this isn't a ColorComboBox). Last entry always opens the
+      // custom-color picker inline.
+      const TEXT_COLOR_PRESETS = [
+         { label: "White",   argb: 0xffffffff },
+         { label: "Black",   argb: 0xff000000 },
+         { label: "Red",     argb: 0xffff3b30 },
+         { label: "Yellow",  argb: 0xffffd60a },
+         { label: "Green",   argb: 0xff34c759 },
+         { label: "Cyan",    argb: 0xff32ade6 },
+         { label: "Blue",    argb: 0xff0a84ff },
+         { label: "Magenta", argb: 0xffbf5af2 },
+         { label: "Gray",    argb: 0xff8e8e93 }
+      ];
+      const CUSTOM_COLOR_INDEX = TEXT_COLOR_PRESETS.length;
+
+      this.textColorLabel = new Label( this );
+      this.textColorLabel.text = "Text color:";
+      this.textColorCombo = new ComboBox( this );
+      for ( let i = 0; i < TEXT_COLOR_PRESETS.length; ++i )
+         this.textColorCombo.addItem( TEXT_COLOR_PRESETS[i].label );
+      this.textColorCombo.addItem( "Custom..." );
+      this.textColorCombo.currentItem = 0; // White, matches the previous fixed color
+      this._lastTextColorItem = 0;
+      this.textColorCombo.onItemSelected = ( index ) =>
+      {
+         if ( index == CUSTOM_COLOR_INDEX )
+         {
+            let scd = new SimpleColorDialog( dlg.previewControl.textColor );
+            scd.alphaEnabled = false; // text is always drawn fully opaque
+            scd.windowTitle = "Text Color";
+            if ( scd.execute() )
+            {
+               dlg.previewControl.textColor = scd.color;
+               dlg.textColorCombo.setItemText( CUSTOM_COLOR_INDEX,
+                  format( "Custom (%d,%d,%d)", Color.red( scd.color ), Color.green( scd.color ), Color.blue( scd.color ) ) );
+               dlg._lastTextColorItem = CUSTOM_COLOR_INDEX;
+               refreshPreview();
+            }
+            else
+               dlg.textColorCombo.currentItem = dlg._lastTextColorItem;
+            return;
+         }
+         dlg._lastTextColorItem = index;
+         dlg.previewControl.textColor = TEXT_COLOR_PRESETS[index].argb;
+         refreshPreview();
+      };
+
+      this.bgOpacityLabel = new Label( this );
+      this.bgOpacityLabel.text = "Background opacity:";
+      this.bgOpacitySpinBox = new SpinBox( this );
+      this.bgOpacitySpinBox.setRange( 0, 100 );
+      this.bgOpacitySpinBox.value = 55; // matches the previous fixed opacity
+      this.bgOpacitySpinBox.suffix = " %";
+      this.bgOpacitySpinBox.toolTip = "0% = no background box at all (text only), 100% = fully opaque.";
+      this.bgOpacitySpinBox.onValueUpdated = ( value ) =>
+      {
+         dlg.previewControl.bgOpacity = value;
+         refreshPreview();
+      };
+
+      const LINE_ALIGNS = [ "left", "center", "right" ];
+      this.lineAlignLabel = new Label( this );
+      this.lineAlignLabel.text = "Text alignment:";
+      this.lineAlignCombo = new ComboBox( this );
+      this.lineAlignCombo.addItem( "Left" );
+      this.lineAlignCombo.addItem( "Center" );
+      this.lineAlignCombo.addItem( "Right" );
+      this.lineAlignCombo.currentItem = 0; // Left, matches the previous fixed behavior
+      this.lineAlignCombo.toolTip = "How multiple watermark lines line up with each other - only visible with 2+ lines.";
+      this.lineAlignCombo.onItemSelected = ( index ) =>
+      {
+         dlg.previewControl.lineAlign = LINE_ALIGNS[index];
+         refreshPreview();
+      };
+
+      this.styleRow1 = new HorizontalSizer;
+      this.styleRow1.spacing = 8;
+      this.styleRow1.add( this.fontSizeLabel );
+      this.styleRow1.add( this.fontSizeCombo );
+      this.styleRow1.addSpacing( 16 );
+      this.styleRow1.add( this.textColorLabel );
+      this.styleRow1.add( this.textColorCombo );
+      this.styleRow1.addStretch();
+
+      this.styleRow2 = new HorizontalSizer;
+      this.styleRow2.spacing = 8;
+      this.styleRow2.add( this.bgOpacityLabel );
+      this.styleRow2.add( this.bgOpacitySpinBox );
+      this.styleRow2.addSpacing( 16 );
+      this.styleRow2.add( this.lineAlignLabel );
+      this.styleRow2.add( this.lineAlignCombo );
+      this.styleRow2.addStretch();
+
+      // 3x3 quick-position grid - a shortcut for the nine common anchors,
+      // in addition to (not instead of) freely dragging the box below.
+      let makePositionButton = ( label, tip, fracX, fracY ) =>
+      {
+         let b = new PushButton( dlg );
+         b.text = label;
+         b.toolTip = tip;
+         b.setScaledFixedSize( 32, 22 );
+         b.onClick = () =>
+         {
+            dlg.previewControl.posFracX = fracX;
+            dlg.previewControl.posFracY = fracY;
+            dlg.previewControl.update();
+         };
+         return b;
+      };
+
+      this.positionLabel = new Label( this );
+      this.positionLabel.text = "Position preset:";
+
+      this.posTL = makePositionButton( "TL", "Top Left",      0,   0   );
+      this.posTC = makePositionButton( "TC", "Top Center",    0.5, 0   );
+      this.posTR = makePositionButton( "TR", "Top Right",     1,   0   );
+      this.posML = makePositionButton( "ML", "Middle Left",   0,   0.5 );
+      this.posMC = makePositionButton( "C",  "Center",        0.5, 0.5 );
+      this.posMR = makePositionButton( "MR", "Middle Right",  1,   0.5 );
+      this.posBL = makePositionButton( "BL", "Bottom Left",   0,   1   );
+      this.posBC = makePositionButton( "BC", "Bottom Center", 0.5, 1   );
+      this.posBR = makePositionButton( "BR", "Bottom Right",  1,   1   );
+
+      this.posRow1 = new HorizontalSizer;
+      this.posRow1.spacing = 2;
+      this.posRow1.add( this.posTL ); this.posRow1.add( this.posTC ); this.posRow1.add( this.posTR );
+      this.posRow2 = new HorizontalSizer;
+      this.posRow2.spacing = 2;
+      this.posRow2.add( this.posML ); this.posRow2.add( this.posMC ); this.posRow2.add( this.posMR );
+      this.posRow3 = new HorizontalSizer;
+      this.posRow3.spacing = 2;
+      this.posRow3.add( this.posBL ); this.posRow3.add( this.posBC ); this.posRow3.add( this.posBR );
+
+      this.posGrid = new VerticalSizer;
+      this.posGrid.spacing = 2;
+      this.posGrid.add( this.posRow1 );
+      this.posGrid.add( this.posRow2 );
+      this.posGrid.add( this.posRow3 );
+
+      // Position preset row - kept out of styleSizer and placed next to the
+      // preview panel instead (see the two-column layout below), since it's
+      // really an alternative to dragging in that same panel.
+      this.styleRow3 = new HorizontalSizer;
+      this.styleRow3.spacing = 8;
+      this.styleRow3.add( this.positionLabel );
+      this.styleRow3.add( this.posGrid );
+      this.styleRow3.addStretch();
+
+      this.styleSizer = new VerticalSizer;
+      this.styleSizer.spacing = 4;
+      this.styleSizer.add( this.styleRow1 );
+      this.styleSizer.add( this.styleRow2 );
+
       // --- Preview --------------------------------------------------------
 
       let selectedFieldIds = () =>
@@ -967,7 +1248,13 @@ class WatermarkDialog extends Dialog
             try
             {
                drawWatermark( newWindow, dlg.lines,
-                               dlg.previewControl.posFracX, dlg.previewControl.posFracY );
+                               dlg.previewControl.posFracX, dlg.previewControl.posFracY,
+                               {
+                                  fontScale: dlg.previewControl.fontScale,
+                                  textColor: dlg.previewControl.textColor,
+                                  bgOpacity: dlg.previewControl.bgOpacity,
+                                  lineAlign: dlg.previewControl.lineAlign
+                               } );
             }
             catch ( e )
             {
@@ -993,31 +1280,52 @@ class WatermarkDialog extends Dialog
       this.buttonSizer.add( this.applyButton );
       this.buttonSizer.add( this.cancelButton );
 
+      // Two columns instead of one long vertical stack, so the dialog stays
+      // usable height-wise on smaller screens: left column is all the
+      // "settings" (source, fields, style), right column is the interactive
+      // preview (drag box + position presets right below it).
+      this.leftColumnSizer = new VerticalSizer;
+      this.leftColumnSizer.spacing = 6;
+      this.leftColumnSizer.add( this.targetSectionLabel );
+      this.leftColumnSizer.add( this.targetViewList );
+      this.leftColumnSizer.addSpacing( 6 );
+      this.leftColumnSizer.add( this.refSectionLabel );
+      this.leftColumnSizer.add( this.refSourceHintLabel );
+      this.leftColumnSizer.add( this.refSourceSizer );
+      this.leftColumnSizer.add( this.refViewList );
+      this.leftColumnSizer.add( this.refFileSizer );
+      this.leftColumnSizer.addSpacing( 6 );
+      this.leftColumnSizer.add( this.fieldsSectionLabel );
+      this.leftColumnSizer.add( this.fieldsSizer );
+      this.leftColumnSizer.add( this.resolveLocationCheckBox );
+      this.leftColumnSizer.addSpacing( 6 );
+      this.leftColumnSizer.add( this.customTextLabel );
+      this.leftColumnSizer.add( this.customTextEdit );
+      this.leftColumnSizer.addSpacing( 6 );
+      this.leftColumnSizer.add( this.styleSectionLabel );
+      this.leftColumnSizer.add( this.styleSizer );
+      this.leftColumnSizer.addStretch();
+
+      this.rightColumnSizer = new VerticalSizer;
+      this.rightColumnSizer.spacing = 6;
+      this.rightColumnSizer.add( this.previewButton );
+      this.rightColumnSizer.add( this.previewLabel );
+      this.rightColumnSizer.add( this.previewControl );
+      this.rightColumnSizer.add( this.styleRow3 );
+      this.rightColumnSizer.add( this.previewHintLabel );
+      this.rightColumnSizer.addStretch();
+
+      this.columnsSizer = new HorizontalSizer;
+      this.columnsSizer.spacing = 16;
+      this.columnsSizer.add( this.leftColumnSizer );
+      this.columnsSizer.add( this.rightColumnSizer );
+
       this.sizer = new VerticalSizer;
       this.sizer.margin = 8;
       this.sizer.spacing = 6;
       this.sizer.add( this.titleBarSizer );
       this.sizer.add( this.helpLabel );
-      this.sizer.add( this.targetSectionLabel );
-      this.sizer.add( this.targetViewList );
-      this.sizer.addSpacing( 6 );
-      this.sizer.add( this.refSectionLabel );
-      this.sizer.add( this.refSourceHintLabel );
-      this.sizer.add( this.refSourceSizer );
-      this.sizer.add( this.refViewList );
-      this.sizer.add( this.refFileSizer );
-      this.sizer.addSpacing( 6 );
-      this.sizer.add( this.fieldsSectionLabel );
-      this.sizer.add( this.fieldsSizer );
-      this.sizer.add( this.resolveLocationCheckBox );
-      this.sizer.addSpacing( 6 );
-      this.sizer.add( this.customTextLabel );
-      this.sizer.add( this.customTextEdit );
-      this.sizer.addSpacing( 6 );
-      this.sizer.add( this.previewButton );
-      this.sizer.add( this.previewLabel );
-      this.sizer.add( this.previewControl );
-      this.sizer.add( this.previewHintLabel );
+      this.sizer.add( this.columnsSizer );
       this.sizer.addSpacing( 6 );
       this.sizer.add( this.buttonSizer );
    }

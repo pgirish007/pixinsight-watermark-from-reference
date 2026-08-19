@@ -14,7 +14,10 @@ Requires PixInsight 1.9.4 or later (V8 script runtime).
   focal length, coordinates, gain, sensor temperature and site location
   straight from FITS keywords or XISF properties
 - Pick exactly which fields appear in the watermark
-- Live preview with drag-to-reposition placement
+- Customize text size, text color, background opacity, and left/center/right
+  line alignment
+- Live preview with drag-to-reposition placement, plus a 3x3 quick-position
+  grid for the nine common corner/edge/center anchors
 - Non-destructive: always creates a new image, the original is never modified
 - Reference metadata can come from an already-open view or a file on disk
 
@@ -60,10 +63,17 @@ install it under the Scripts menu permanently.
 5. Optionally type something into **Custom message** - it's added as its
    own line after the metadata fields, exactly as typed (e.g. your name,
    a website, or a copyright note).
-6. Click **Preview Metadata**. The live preview shows a thumbnail of your
+6. Under **Watermark style**, adjust **Text size**, **Text color**
+   (a preset list, or the swatch button for a custom RGB color),
+   **Background opacity** (0% = text only, no background box, up to 100% =
+   fully opaque), and **Text alignment** (left/center/right, relevant once
+   you have 2+ lines).
+7. Click **Preview Metadata**. The live preview shows a thumbnail of your
    target image with the watermark rendered on top - drag the box to
-   reposition it anywhere on the image.
-7. Click **Add Watermark (new image)**. A new image window is created with
+   reposition it anywhere on the image, or click one of the nine
+   **Position preset** buttons (top-left, center, bottom-right, etc.) for a
+   quick placement.
+8. Click **Add Watermark (new image)**. A new image window is created with
    the watermark baked in; your original target image is left untouched.
 
 Click the **ℹ About** button at any time for the script's version and author
